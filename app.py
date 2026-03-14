@@ -74,7 +74,6 @@ with st.sidebar:
     uploaded_file = st.file_uploader("Supported: PDF, DOCX, TXT", type=["txt", "pdf", "docx"])
 
     if uploaded_file:
-        # Only re-process if it's a NEW file (avoid reset on every rerun)
         file_id = uploaded_file.name + str(uploaded_file.size)
         if st.session_state.file_id != file_id:
             with st.spinner("Processing document..."):
@@ -105,7 +104,6 @@ with tab1:
     if not st.session_state.vectorstore:
         st.info("👈 Upload a document to start asking questions.")
     else:
-        # Display chat history
         for item in st.session_state.history:
             with st.chat_message("user"):
                 st.write(item["question"])
@@ -120,7 +118,6 @@ with tab1:
                     with st.expander("📎 Source chunk"):
                         st.text(item["source"])
 
-        # Chat input
         question = st.chat_input("Ask something about your document...")
         if question:
             with st.spinner("Searching..."):
