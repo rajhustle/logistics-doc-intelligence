@@ -1,0 +1,71 @@
+RATE CONFIRMATION
+=================
+Document Type: Rate Confirmation
+Shipment ID: SHP-45892
+BOL Number: BOL-2026-00123
+Order Date: 08 Feb 2026
+
+CARRIER INFORMATION
+-------------------
+Carrier Name: FedEx Freight
+Carrier SCAC: FXNL
+Carrier Contact: dispatch@fedexfreight.com
+Carrier Phone: +1-800-555-0192
+Driver Name: James Thornton
+Truck Number: TRK-4421
+Trailer Type: Dry Van 53ft
+
+SHIPPER DETAILS
+---------------
+Shipper: Global Parts Manufacturing Inc.
+Shipper Address: 142 Industrial Blvd, Newark, NJ 07102
+Shipper Contact: warehouse@globalparts.com
+Shipper Phone: +1-973-555-0134
+
+CONSIGNEE DETAILS
+-----------------
+Consignee: ABC Logistics & Distribution
+Consignee Address: 889 Commerce Way, Los Angeles, CA 90058
+Consignee Contact: receiving@abclogistics.com
+Consignee Phone: +1-213-555-0198
+
+SHIPMENT DETAILS
+----------------
+Origin: Newark, New Jersey
+Destination: Los Angeles, California
+Pickup Date: 10 Feb 2026
+Pickup Time: 08:00 AM
+Delivery Date: 14 Feb 2026
+Delivery Time: 05:00 PM
+Equipment Type: Dry Van 53ft
+Mode: FTL (Full Truckload)
+Commodity: Auto Parts
+Weight: 18500 lbs
+Dimensions: 48ft x 8ft x 8ft
+Pallet Count: 22
+Hazmat: No
+Temperature Controlled: No
+
+FINANCIALS
+----------
+Base Rate: $1250.00
+Fuel Surcharge: $187.50
+Accessorial Charges: $62.50
+Total Rate: $1500.00
+Currency: USD
+Payment Terms: Net 30
+Invoice To: ABC Logistics & Distribution
+
+SPECIAL INSTRUCTIONS
+--------------------
+Driver must check in at Gate B.
+Liftgate required at delivery.
+Call consignee 1 hour before arrival.
+No appointment needed at pickup.
+
+CONFIRMATION
+------------
+Confirmed By: Sarah Mitchell
+Title: Load Coordinator
+Date Confirmed: 08 Feb 2026
+Reference Number: REF-ULS-2026-4892

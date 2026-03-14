@@ -1,0 +1,113 @@
+"""
+rag.py — Retrieval + Guardrails for UltraShip Doc Intelligence
+"""
+
+import re
+
+STOPWORDS = {
+    "what", "is", "the", "a", "an", "of", "in", "on", "at", "to", "for",
+    "and", "or", "are", "was", "were", "has", "have", "how", "when", "where",
+    "who", "which", "does", "do", "it", "this", "that", "me", "my", "tell",
+    "give", "about", "with", "from", "be", "by", "as", "its", "their", "name"
+}
+
+FIELD_MAP = {
+    "carrier":      ["carrier name", "carrier"],
+    "rate":         ["total rate", "rate", "freight charge", "base rate", "amount"],
+    "pickup":       ["pickup date", "pick up date", "ship date"],
+    "delivery":     ["delivery date", "deliver by", "estimated arrival"],
+    "consignee":    ["consignee", "ship to", "deliver to", "customer name"],
+    "shipper":      ["shipper", "ship from", "origin company"],
+    "shipment":     ["shipment id", "shipment no", "bol number", "bol", "pro number"],
+    "weight":       ["weight"],
+    "origin":       ["origin"],
+    "destination":  ["destination"],
+    "equipment":    ["equipment type", "trailer type"],
+    "mode":         ["mode"],
+    "email":        ["contact email", "email"],
+    "currency":     ["currency"],
+    "payment":      ["payment terms"],
+}
+
+
+def _tokenize(text: str) -> set:
+    tokens = re.findall(r"[a-z0-9]+", text.lower())
+    return {t for t in tokens if t not in STOPWORDS and len(t) > 2}
+
+
+def _token_overlap(question: str, document_text: str) -> int:
+    return len(_tokenize(question) & _tokenize(document_text))
+
+
+def _parse_all_fields(text: str) -> dict:
+    """
+    Parse ALL 'Field Name: Value' pairs from document.
+    Value stops at the next field label or newline — whichever comes first.
+    """
+    # Match any "Word(s): value" pattern — value ends at newline
+    pattern = r"^([A-Za-z][A-Za-z\s]{1,30}?)\s*[:\-]\s*(.+)$"
+    fields = {}
+    for line in text.splitlines():
+        line = line.strip()
+        match = re.match(pattern, line)
+        if match:
+            label = match.group(1).strip().lower()
+            value = match.group(2).strip()
+            fields[label] = value
+    return fields
+
+
+def _extract_value(question: str, chunk: str, all_doc_text: str = "") -> str:
+    """Extract specific field value. Search chunk first, then full doc."""
+    q_lower = question.lower()
+
+    # Parse fields from chunk and full doc
+    chunk_fields = _parse_all_fields(chunk)
+    doc_fields   = _parse_all_fields(all_doc_text) if all_doc_text else {}
+
+    for keyword, labels in FIELD_MAP.items():
+        if keyword in q_lower:
+            for label in labels:
+                # Try chunk first
+                if label.lower() in chunk_fields:
+                    return chunk_fields[label.lower()]
+                # Then full doc
+                if label.lower() in doc_fields:
+                    return doc_fields[label.lower()]
+
+    # Fallback: return first line of chunk
+    return chunk.strip().splitlines()[0]
+
+
+def ask_question(question: str, vectorstore, all_doc_text: str = "") -> dict:
+
+    if not question or not question.strip():
+        return {"answer": "Please enter a question.", "source": None, "confidence": 0.0, "guardrail": "empty_question"}
+
+    results = vectorstore.similarity_search_with_score(question, k=3)
+
+    if not results:
+        return {"answer": "Not found in document.", "source": None, "confidence": 0.0, "guardrail": "no_results"}
+
+    best_doc, best_score = results[0]
+    confidence = round(1 / (1 + best_score), 3)
+
+    # Guardrail: token overlap
+    if all_doc_text:
+        overlap = _token_overlap(question, all_doc_text)
+        if overlap < 1:
+            return {
+                "answer": "This question is not related to the uploaded document.",
+                "source": None,
+                "confidence": confidence,
+                "guardrail": "token_overlap"
+            }
+
+    answer = _extract_value(question, best_doc.page_content, all_doc_text)
+
+    return {
+        "answer": answer,
+        "source": best_doc.page_content.strip(),
+        "confidence": confidence,
+        "guardrail": None
+    }
