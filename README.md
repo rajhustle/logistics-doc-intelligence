@@ -2,7 +2,7 @@
 
 **Upload a logistics document. Ask questions about it. Extract structured shipment data. All offline — no API key required.**
 
-🟢 **[Click here to try the live demo](#)** ← *(update this link after Streamlit deployment)*
+🟢 **[Click here to try the live demo](https://logistics-doc-intelligence-6qqtpttbdgwrruq62kd7tw.streamlit.app/)** — no install, no signup, runs in your browser.
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](#)
 
