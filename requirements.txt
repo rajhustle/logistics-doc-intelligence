@@ -1,5 +1,9 @@
 
 streamlit
 langchain
+langchain-community
 faiss-cpu
 sentence-transformers
+pdfplumber
+python-docx
+requests
