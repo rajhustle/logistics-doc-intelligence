@@ -10,11 +10,12 @@ STOPWORDS = {
     "who", "which", "does", "do", "it", "this", "that", "me", "my", "tell",
     "give", "about", "with", "from", "be", "by", "as", "its", "their", "name",
     "current", "today", "now", "latest", "per", "any", "all", "get", "find",
-    "show", "list", "please", "can", "you", "much", "many", "some"
+    "show", "list", "please", "can", "you", "much", "many", "some",
+    "time", "date", "number", "type", "address", "terms", "count", "size"
 }
 
-# Hard block — if any of these appear in the question, reject immediately.
-# Currency names included because "dollar rate" / "rupee price" are never logistics.
+# Hard block — if any of these appear anywhere in the question, reject immediately.
+# Includes currency names because "dollar rate" / "rupee price" are never logistics.
 NOISE_KEYWORDS = {
     "gold", "silver", "bitcoin", "crypto", "stock", "sensex", "nifty",
     "weather", "temperature", "news", "tomorrow", "yesterday",
@@ -37,12 +38,12 @@ DOMAIN_KEYWORDS = {
     "confirmed", "coordinator", "reference", "scac", "driver", "currency"
 }
 
-# Generic words that need a logistics anchor to be accepted
-# NOTE: "rate" is intentionally excluded — "what is the rate?" is valid,
-# and "gold rate" is already caught by NOISE_KEYWORDS.
+# Generic words valid in logistics but also universal — need an anchor to pass
+# Note: "rate" intentionally excluded — "what is the rate?" is valid logistics,
+# and "gold rate" / "dollar rate" are already caught by NOISE_KEYWORDS.
 AMBIGUOUS_KEYWORDS = {"price", "amount", "charge", "cost", "fee", "value"}
 
-# Confirms logistics intent when only an ambiguous word is present
+# Confirms logistics intent when only ambiguous keywords are present
 LOGISTICS_CONTEXT_WORDS = {
     "total", "freight", "base", "fuel", "accessorial", "shipment",
     "carrier", "delivery", "pickup", "shipping", "transport"
@@ -66,6 +67,9 @@ FIELD_MAP = {
     "payment":      ["payment terms"],
 }
 
+# Direct field keys — used to validate domain-keyword prepositional objects
+FIELD_MAP_KEYS = set(FIELD_MAP.keys())
+
 
 def _tokenize(text: str) -> set:
     tokens = re.findall(r"[a-z0-9]+", text.lower())
@@ -76,23 +80,15 @@ def _token_overlap(question: str, document_text: str) -> int:
     return len(_tokenize(question) & _tokenize(document_text))
 
 
-def _has_field_map_hit(question: str) -> bool:
-    """Returns True if the question directly names a known shipment field."""
-    q_lower = question.lower()
-    return any(keyword in q_lower for keyword in FIELD_MAP)
-
-
 def _is_domain_relevant(question: str) -> bool:
     """
-    Three-layer guardrail — no LLM required.
-
     Layer A — Noise block:
         Hard reject on noise/currency keywords.
         Catches: "gold rate", "dollar rate", "petrol price", "sensex" etc.
 
     Layer B — Ambiguity check:
-        "price", "cost", "charge" etc. need a logistics anchor word.
-        Blocks "price of oil", "cost of living" etc.
+        "price", "cost", "charge" etc. require a logistics anchor word.
+        Blocks "price of oil", "cost of living" without a logistics anchor.
 
     Layer C — Domain keyword required:
         Question must contain at least one logistics domain keyword.
@@ -101,20 +97,85 @@ def _is_domain_relevant(question: str) -> bool:
     q_tokens = _tokenize(question)
     raw_words = set(re.findall(r"[a-z]+", q_lower))
 
-    # Layer A
+    # Layer A: hard noise block
     if raw_words & NOISE_KEYWORDS:
         return False
 
-    # Layer B
-    unambiguous_domain_hits = q_tokens & (DOMAIN_KEYWORDS - AMBIGUOUS_KEYWORDS)
-    ambiguous_hits = q_tokens & AMBIGUOUS_KEYWORDS
-    if ambiguous_hits and not unambiguous_domain_hits:
+    # Layer B: ambiguous words need logistics confirmation
+    unambiguous = q_tokens & (DOMAIN_KEYWORDS - AMBIGUOUS_KEYWORDS)
+    ambiguous = q_tokens & AMBIGUOUS_KEYWORDS
+    if ambiguous and not unambiguous:
         if not (raw_words & LOGISTICS_CONTEXT_WORDS):
             return False
 
-    # Layer C
+    # Layer C: must have at least one domain keyword
     if not (q_tokens & DOMAIN_KEYWORDS):
         return False
+
+    return True
+
+
+def _extract_prepositional_objects(question: str) -> set:
+    """Extract words that appear directly after 'of', 'for', 'about'."""
+    pattern = r'\b(?:of|for|about)\b\s+(?:a\s+|an\s+|the\s+|my\s+)?([a-z]+)'
+    return set(re.findall(pattern, question.lower()))
+
+
+def _foreign_subject_check(question: str, doc_text: str) -> bool:
+    """
+    Detects questions that use logistics keywords but are asking about
+    something completely unrelated to this document.
+
+    Examples blocked:
+      "what is the bronze rate?"      — "bronze" not in document
+      "what is the carrier pigeon?"   — "pigeon" not in document
+      "what is the weight of a truck?"— "truck" is a domain kw but NOT a field key
+      "what is the delivery for pizza?"— "pizza" not in document
+      "what is the rate of interest?" — "interest" not in document
+
+    Examples allowed:
+      "who is the carrier?"           — no foreign qualifiers
+      "what is the mode of delivery?" — "delivery" IS a field key
+      "what is the weight of the shipment?" — "shipment" IS a field key
+      "what is the total rate?"       — "total" exists in document
+
+    Two sub-checks:
+    1. Prepositional objects (after of/for/about):
+       - If it's a domain keyword: valid only if it's a direct FIELD_MAP key.
+         "weight of truck" → "truck" not a field key → block.
+         "mode of delivery" → "delivery" IS a field key → pass.
+       - If it's not a domain keyword: must exist in document tokens.
+         "delivery for pizza" → "pizza" not in doc → block.
+
+    2. Non-domain subject qualifiers (remaining tokens after stripping domain/context words):
+       Must exist in document tokens.
+       "bronze rate" → "bronze" not in doc → block.
+       "carrier pigeon" → "pigeon" not in doc → block.
+    """
+    doc_tokens = _tokenize(doc_text)
+
+    # Sub-check 1: prepositional objects
+    prep_objects = _extract_prepositional_objects(question)
+    for obj in prep_objects:
+        if obj in STOPWORDS or len(obj) <= 2:
+            continue
+        if obj in DOMAIN_KEYWORDS:
+            # Domain kw as prep object is only valid if it's a direct field key.
+            # "mode of delivery" → delivery IS a field key → ok
+            # "weight of a truck" → truck is NOT a field key → block
+            if obj not in FIELD_MAP_KEYS:
+                return False
+        else:
+            # Non-domain prep object must exist in the document
+            if obj not in doc_tokens:
+                return False
+
+    # Sub-check 2: non-domain subject qualifiers
+    q_tokens = _tokenize(question)
+    subject_qualifiers = q_tokens - DOMAIN_KEYWORDS - AMBIGUOUS_KEYWORDS - LOGISTICS_CONTEXT_WORDS
+    for token in subject_qualifiers:
+        if token not in doc_tokens:
+            return False
 
     return True
 
@@ -163,7 +224,7 @@ def ask_question(question: str, vectorstore, all_doc_text: str = "") -> dict:
     best_doc, best_score = results[0]
     confidence = round(1 / (1 + best_score), 3)
 
-    # Layer 1: Domain relevance check
+    # Layer 1: domain relevance (noise block + ambiguity check + domain keyword required)
     if not _is_domain_relevant(question):
         return {
             "answer": "This question is not related to the uploaded document.",
@@ -172,20 +233,16 @@ def ask_question(question: str, vectorstore, all_doc_text: str = "") -> dict:
             "guardrail": "domain_check"
         }
 
-    # Layer 2: Token overlap check
-    # SKIPPED if question directly names a known field (carrier, rate, pickup, etc.)
-    # WHY: short precise questions like "who is the carrier?" tokenize to just
-    # {'carrier'} — 1 token — which would false-block at threshold < 2.
-    # A direct FIELD_MAP hit is stronger proof of relevance than token count.
-    if all_doc_text and not _has_field_map_hit(question):
-        overlap = _token_overlap(question, all_doc_text)
-        if overlap < 2:
-            return {
-                "answer": "This question is not related to the uploaded document.",
-                "source": None,
-                "confidence": confidence,
-                "guardrail": "token_overlap"
-            }
+    # Layer 2: foreign subject check
+    # Detects "bronze rate", "carrier pigeon", "delivery for pizza", "weight of truck" etc.
+    # Uses document content — only runs when doc text is available.
+    if all_doc_text and not _foreign_subject_check(question, all_doc_text):
+        return {
+            "answer": "This question is not related to the uploaded document.",
+            "source": None,
+            "confidence": confidence,
+            "guardrail": "foreign_subject"
+        }
 
     answer = _extract_value(question, best_doc.page_content, all_doc_text)
 
