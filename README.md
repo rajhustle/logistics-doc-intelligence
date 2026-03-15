@@ -1,10 +1,9 @@
 # UltraShip Doc Intelligence
 
 **Upload a logistics document. Ask questions about it. Extract structured shipment data. No API key required.**
+🟢 **[Click here to try the live demo](https://logistics-doc-intelligence-goebuqgrojuvttbamotcxq.streamlit.app/)**
 
-🟢 **[Click here to try the live demo]([YOUR_STREAMLIT_URL_HERE](https://logistics-doc-intelligence-goebuqgrojuvttbamotcxq.streamlit.app/))**
-
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)]([YOUR_STREAMLIT_URL_HERE](https://logistics-doc-intelligence-goebuqgrojuvttbamotcxq.streamlit.app/))
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://logistics-doc-intelligence-goebuqgrojuvttbamotcxq.streamlit.app/)
 
 > App may take 30–60 seconds to wake if inactive. Upload `sample_document.txt` included in this repo to test immediately.
 
