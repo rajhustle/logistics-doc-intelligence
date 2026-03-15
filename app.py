@@ -5,6 +5,7 @@ app.py — UltraShip Doc Intelligence
 import streamlit as st
 import os
 
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 # Set HuggingFace token from Streamlit secrets if available
 if "HF_TOKEN" in st.secrets:
     os.environ["HUGGINGFACEHUB_API_TOKEN"] = st.secrets["HF_TOKEN"]
