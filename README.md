@@ -1,31 +1,39 @@
 # UltraShip Doc Intelligence
 
-**Upload a logistics document. Ask questions about it. Extract structured shipment data. All offline — no API key required.**
+**Upload a logistics document. Ask questions about it. Extract structured shipment data. No API key required.**
+
+🟢 **[Click here to try the live demo](YOUR_STREAMLIT_URL_HERE)**
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](YOUR_STREAMLIT_URL_HERE)
+
+> App may take 30–60 seconds to wake if inactive. Upload `sample_document.txt` included in this repo to test immediately.
 
 ---
 
 ## What This Is
 
-A document intelligence system built specifically for logistics documents — Rate Confirmations, Bills of Lading (BOLs), and shipping orders.
+A document intelligence system built for logistics documents — Rate Confirmations, Bills of Lading (BOLs), and shipping orders.
 
 Upload a document and the system does two things:
 
-1. **Answer questions** about the document in plain English — with confidence scoring and guardrails that block off-topic questions
+1. **Answer questions** in plain English — with confidence scoring and a guardrail layer that blocks off-topic questions
 2. **Extract structured shipment data** automatically — carrier, shipper, consignee, rate, pickup/delivery dates, weight, mode, and more
 
-No OpenAI key. No Anthropic key. No internet connection required after setup. Runs entirely on your machine using local HuggingFace embeddings.
+No OpenAI key. No Anthropic key. No internet required after setup. Runs entirely on local HuggingFace embeddings.
 
 ---
 
 ## Why This Is Different From a Generic RAG Chatbot
 
-Most RAG demos have a critical flaw — they answer anything, even questions completely unrelated to the uploaded document. Ask "what is the Sensex today?" and a generic RAG bot will hallucinate an answer from whatever it retrieved.
+Most RAG demos answer anything — even questions completely unrelated to the uploaded document. Ask a generic bot "what is the gold rate today?" and it returns a hallucinated answer from whatever chunk it retrieved.
 
-This system has a **guardrail layer** that detects when a question is not related to the uploaded document and blocks it — returning a clear message instead of a hallucinated answer.
+This system has a **deterministic guardrail layer** — no LLM judge, no API call, zero cost — that detects when a question cannot be answered from the uploaded document and blocks it cleanly.
 
-Additionally most RAG systems return raw chunk text as the answer. This system has a **field extraction engine** that parses structured fields (carrier name, rate, dates) and returns clean precise values — not paragraph blobs.
+Try it: upload the sample document, ask `what is the gold rate?` — blocked. Ask `what is the bronze rate?` — blocked. Ask `who is the carrier?` — answered precisely.
 
-These are the same reliability principles used in production AI systems where wrong answers have real consequences.
+The guardrail works by grounding every question in the actual document. Every content word in your question must exist in the document. Words after "of/for/about" must exist as actual field labels. If anything is foreign to the document — it blocks.
+
+This is the same reliability thinking used in production AI systems where wrong answers have real consequences.
 
 ---
 
@@ -33,8 +41,8 @@ These are the same reliability principles used in production AI systems where wr
 
 ### 💬 Question Answering with Guardrails
 - Ask any question about your uploaded document
-- Token overlap guardrail — blocks questions not related to the document
-- Confidence scoring — every answer shows a confidence level
+- **Document-grounded guardrail** — blocks questions whose content words don't exist in the document
+- Confidence scoring on every answer:
   - 🟢 Green — high confidence (≥ 0.65)
   - 🟡 Orange — medium confidence (≥ 0.45)
   - 🔴 Red — low confidence, treat with caution
@@ -57,12 +65,34 @@ Automatically extracts 11 shipment fields from any logistics document:
 | Weight | 18,500 lbs |
 | Carrier Name | FedEx Freight |
 
-Shows which fields were found and which are missing from the document — no silent failures.
+Shows found fields and missing fields explicitly — no silent failures.
 
 ### 📄 Document Support
 - PDF
 - DOCX (Word documents)
 - TXT
+
+---
+
+## Guardrail — How It Works
+
+The guardrail is entirely deterministic. No LLM. No API. Pure logic.
+
+```
+Question enters
+      ↓
+Rule 1: Every content word in the question must exist in the document
+        "gold rate" → "gold" not in document → BLOCKED
+        "bronze rate" → "bronze" not in document → BLOCKED
+        "carrier pigeon" → "pigeon" not in document → BLOCKED
+      ↓
+Rule 2: Words after "of/for/about" must be actual field labels in the document
+        "weight of a truck" → "truck" is not a queryable field → BLOCKED
+        "delivery for pizza" → "pizza" not in document → BLOCKED
+        "weight of the shipment" → "shipment" IS a field → PASSES
+      ↓
+Answer returned with confidence score + source chunk
+```
 
 ---
 
@@ -83,70 +113,63 @@ FAISS Vector Store (in-memory)
       │     ↓
       │   Similarity Search (top 3 chunks)
       │     ↓
-      │   Guardrail Check (token overlap — blocks off-topic questions)
+      │   Document-Grounded Guardrail (rag.py)
       │     ↓
       │   Field Extraction (FIELD_MAP pattern matching)
       │     ↓
-      │   Confidence Score + Answer
+      │   Confidence Score + Answer + Source Chunk
       │
       └── Extraction Tab
             ↓
           Regex Engine (extract.py — 11 fields, multi-pattern fallbacks)
             ↓
-          Structured JSON output
+          Structured JSON output — found fields + missing fields
 ```
-
----
-
-## How to Run
-
-**Step 1 — Download the project**
-- Click the green **Code** button on this GitHub page
-- Click **Download ZIP**
-- Unzip the folder on your computer
-
-**Step 2 — Install Python**
-- Go to [python.org](https://www.python.org/downloads/) and download Python 3.8 or higher
-- During installation check **"Add Python to PATH"**
-
-**Step 3 — Open terminal in the project folder**
-- **Windows:** open the unzipped folder → click the address bar → type `cmd` → press Enter
-- **Mac:** right click the folder → New Terminal at Folder
-
-**Step 4 — Install dependencies**
-```bash
-pip install -r requirements.txt
-pip install pdfplumber python-docx
-```
-
-**Step 5 — Run**
-```bash
-streamlit run app.py
-```
-
-**Step 6 — Open in browser**
-- Streamlit opens `http://localhost:8501` automatically
-- Upload the included `sample_document.txt` to test immediately
 
 ---
 
 ## Quick Test
 
-A sample Rate Confirmation document is included — `sample_document.txt`.
+Upload `sample_document.txt` (included) and try:
 
-Upload it and try these questions:
+**These should be answered:**
 - `who is the carrier?`
 - `what is the total rate?`
 - `when is pickup?`
 - `who is the consignee?`
 - `what is the weight?`
 
-Then click **Extract Structured Data** to see all 11 fields pulled automatically.
+**These should be blocked by the guardrail:**
+- `what is the gold rate today?`
+- `what is the bronze rate?`
+- `what is the carrier pigeon?`
+- `who is the prime minister?`
 
-Try an off-topic question like `what is the gold rate today?` — watch the guardrail block it.
+Then click **Extract Structured Data** — all 11 fields pulled automatically.
 
 ---
 
+## How to Run Locally
+
+**Step 1 — Clone or download**
+```bash
+git clone https://github.com/rajhustle/logistics-doc-intelligence
+cd logistics-doc-intelligence
+```
+
+**Step 2 — Install dependencies**
+```bash
+pip install -r requirements.txt
+```
+
+**Step 3 — Run**
+```bash
+streamlit run app.py
+```
+
+Opens at `http://localhost:8501` automatically.
+
+---
 
 ## Tech Stack
 
@@ -159,7 +182,7 @@ Try an off-topic question like `what is the gold rate today?` — watch the guar
 | PDF extraction | pdfplumber |
 | DOCX extraction | python-docx |
 | Field extraction | Custom regex engine (no LLM) |
-| Guardrails | Token overlap scoring |
+| Guardrails | Document-grounded deterministic logic (no LLM, no API) |
 | Confidence | FAISS distance → normalized score |
 
 **No OpenAI. No Anthropic. No API keys. No internet after setup.**
@@ -171,10 +194,10 @@ Try an off-topic question like `what is the gold rate today?` — watch the guar
 | File | Description |
 |------|-------------|
 | `app.py` | Main Streamlit app — upload, Q&A tab, extraction tab |
-| `rag.py` | Retrieval engine — guardrails, confidence scoring, field extraction |
+| `rag.py` | Retrieval engine — document-grounded guardrail, confidence scoring, field extraction |
 | `extract.py` | Regex-based structured data extractor — 11 shipment fields |
 | `requirements.txt` | Dependencies |
-| `sample_document.txt` | Sample Rate Confirmation for testing |
+| `sample_document.txt` | Sample Rate Confirmation for immediate testing |
 
 ---
 
