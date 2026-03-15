@@ -8,23 +8,50 @@ STOPWORDS = {
     "what", "is", "the", "a", "an", "of", "in", "on", "at", "to", "for",
     "and", "or", "are", "was", "were", "has", "have", "how", "when", "where",
     "who", "which", "does", "do", "it", "this", "that", "me", "my", "tell",
-    "give", "about", "with", "from", "be", "by", "as", "its", "their", "name"
+    "give", "about", "with", "from", "be", "by", "as", "its", "their", "name",
+    "current", "today", "now", "latest", "per", "any", "all", "get", "find",
+    "show", "list", "please", "can", "you", "much", "many", "some"
 }
 
-# Words that MUST appear in the question for it to be domain-relevant
-# If question contains only generic words + one of these, it should still be blocked
+# Hard block — if any of these words appear in the question, reject immediately.
+# Catches "gold rate", "dollar rate", "petrol price", "bitcoin price" etc.
+# Currency names are here because "dollar rate" / "rupee price" are never logistics questions.
 NOISE_KEYWORDS = {
     "gold", "silver", "bitcoin", "crypto", "stock", "sensex", "nifty",
-    "weather", "temperature", "news", "today", "tomorrow", "yesterday",
-    "price", "market", "forex", "dollar", "rupee", "euro", "petrol"
+    "weather", "temperature", "news", "tomorrow", "yesterday",
+    "market", "forex", "petrol", "diesel", "inflation", "gdp",
+    "president", "prime", "minister", "election", "cricket", "movie",
+    "film", "song", "recipe", "food", "restaurant", "hotel", "flight",
+    "visa", "passport", "health", "disease", "covid", "vaccine",
+    "python", "javascript", "programming", "code", "error", "bug",
+    # currency names — financial context, not logistics
+    "dollar", "rupee", "euro", "yen", "pound", "aed", "dinar", "franc",
+    "ruble", "yuan", "ringgit", "baht", "krona", "peso", "real", "lira"
 }
 
-# Core logistics domain keywords — question must overlap with these
+# Core logistics domain keywords — question must contain at least one of these
 DOMAIN_KEYWORDS = {
     "carrier", "shipment", "shipper", "consignee", "pickup", "delivery",
     "freight", "cargo", "truck", "trailer", "bol", "rate", "weight",
     "origin", "destination", "equipment", "mode", "ftl", "ltl",
-    "dispatch", "logistics", "invoice", "payment", "surcharge"
+    "dispatch", "logistics", "invoice", "payment", "surcharge",
+    "pallet", "commodity", "hazmat", "liftgate", "appointment",
+    "confirmed", "coordinator", "reference", "scac", "driver",
+    "currency"
+}
+
+# These words are legitimate in logistics but dangerously generic alone.
+# They need at least one unambiguous domain word OR a logistics context word nearby.
+# NOTE: "rate" is intentionally NOT here — "what is the rate?" is a valid
+# logistics-only question, and noise cases ("gold rate") are already caught by
+# NOISE_KEYWORDS (Layer A).
+AMBIGUOUS_KEYWORDS = {"price", "amount", "charge", "cost", "fee", "value"}
+
+# When an ambiguous word appears without an unambiguous domain word,
+# these context words confirm logistics intent (e.g. "total charge", "freight cost")
+LOGISTICS_CONTEXT_WORDS = {
+    "total", "freight", "base", "fuel", "accessorial", "shipment",
+    "carrier", "delivery", "pickup", "shipping", "transport"
 }
 
 FIELD_MAP = {
@@ -57,17 +84,38 @@ def _token_overlap(question: str, document_text: str) -> int:
 
 def _is_domain_relevant(question: str) -> bool:
     """
-    Two-layer check:
-    1. If question contains any noise keyword (gold, weather, etc) → block
-    2. If question has no overlap with core logistics domain keywords → block
-    """
-    q_tokens = _tokenize(question)
+    Three-layer guardrail — no LLM required.
 
-    # Block if noise keyword present
-    if q_tokens & NOISE_KEYWORDS:
+    Layer A — Noise block:
+        Hard reject if any noise keyword is present in the raw question.
+        Catches: "gold rate", "dollar rate", "petrol price", "weather", "sensex" etc.
+
+    Layer B — Ambiguity check:
+        Words like "price", "cost", "charge" are valid in logistics but also
+        universal. If they appear without an unambiguous domain word AND without
+        a logistics context word (total, freight, base...), block.
+
+    Layer C — Domain keyword required:
+        After the above, at least one logistics domain keyword must remain.
+        Blocks generic questions that somehow slipped through.
+    """
+    q_lower = question.lower()
+    q_tokens = _tokenize(question)
+    raw_words = set(re.findall(r"[a-z]+", q_lower))
+
+    # Layer A: hard noise block
+    if raw_words & NOISE_KEYWORDS:
         return False
 
-    # Block if no logistics domain keyword present
+    # Layer B: ambiguous words need logistics confirmation
+    unambiguous_domain_hits = q_tokens & (DOMAIN_KEYWORDS - AMBIGUOUS_KEYWORDS)
+    ambiguous_hits = q_tokens & AMBIGUOUS_KEYWORDS
+
+    if ambiguous_hits and not unambiguous_domain_hits:
+        if not (raw_words & LOGISTICS_CONTEXT_WORDS):
+            return False
+
+    # Layer C: must have at least one domain keyword
     if not (q_tokens & DOMAIN_KEYWORDS):
         return False
 
