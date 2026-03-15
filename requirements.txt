@@ -1,9 +1,10 @@
 streamlit
 langchain
 langchain-community
-langchain-text-splitters
 faiss-cpu
 sentence-transformers
+torch
+transformers
 pdfplumber
 python-docx
 requests
