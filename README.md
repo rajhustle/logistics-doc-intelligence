@@ -2,10 +2,6 @@
 
 **Upload a logistics document. Ask questions about it. Extract structured shipment data. All offline — no API key required.**
 
-🟢 **[Click here to try the live demo](https://logistics-doc-intelligence-6qqtpttbdgwrruq62kd7tw.streamlit.app/)** — no install, no signup, runs in your browser.
-
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](#)
-
 ---
 
 ## What This Is
@@ -151,20 +147,6 @@ Try an off-topic question like `what is the gold rate today?` — watch the guar
 
 ---
 
-## Deploy Your Own — Free
-
-Deploy your own instance on Streamlit Cloud in 5 minutes:
-
-1. Fork this repo
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Sign in with GitHub
-4. Select your forked repo
-5. Set main file path: `app.py`
-6. Click Deploy
-
-Free public URL. No server. No monthly cost.
-
----
 
 ## Tech Stack
 
