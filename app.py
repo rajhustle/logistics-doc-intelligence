@@ -3,20 +3,12 @@ app.py — UltraShip Doc Intelligence
 """
 
 import streamlit as st
-import os
-
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-# Set HuggingFace token from Streamlit secrets if available
-if "HF_TOKEN" in st.secrets:
-    os.environ["HUGGINGFACEHUB_API_TOKEN"] = st.secrets["HF_TOKEN"]
-    os.environ["HF_TOKEN"] = st.secrets["HF_TOKEN"]
-
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from rag import ask_question
 from extract import extract_structured_data, extract_from_text
-import tempfile
+import tempfile, os
 
 # ── Page setup ────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="UltraShip Doc Intelligence", page_icon="🚚", layout="wide")
