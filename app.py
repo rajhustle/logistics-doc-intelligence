@@ -9,6 +9,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from rag import ask_question
 from extract import extract_structured_data, extract_from_text
 import tempfile, os
+import os
+os.environ["HF_TOKEN"] = st.secrets.get("HF_TOKEN", "")
 
 # ── Page setup ────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="UltraShip Doc Intelligence", page_icon="🚚", layout="wide")
