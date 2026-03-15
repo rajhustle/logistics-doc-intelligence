@@ -13,9 +13,8 @@ STOPWORDS = {
     "show", "list", "please", "can", "you", "much", "many", "some"
 }
 
-# Hard block — if any of these words appear in the question, reject immediately.
-# Catches "gold rate", "dollar rate", "petrol price", "bitcoin price" etc.
-# Currency names are here because "dollar rate" / "rupee price" are never logistics questions.
+# Hard block — if any of these appear in the question, reject immediately.
+# Currency names included because "dollar rate" / "rupee price" are never logistics.
 NOISE_KEYWORDS = {
     "gold", "silver", "bitcoin", "crypto", "stock", "sensex", "nifty",
     "weather", "temperature", "news", "tomorrow", "yesterday",
@@ -24,31 +23,26 @@ NOISE_KEYWORDS = {
     "film", "song", "recipe", "food", "restaurant", "hotel", "flight",
     "visa", "passport", "health", "disease", "covid", "vaccine",
     "python", "javascript", "programming", "code", "error", "bug",
-    # currency names — financial context, not logistics
     "dollar", "rupee", "euro", "yen", "pound", "aed", "dinar", "franc",
     "ruble", "yuan", "ringgit", "baht", "krona", "peso", "real", "lira"
 }
 
-# Core logistics domain keywords — question must contain at least one of these
+# Core logistics domain keywords
 DOMAIN_KEYWORDS = {
     "carrier", "shipment", "shipper", "consignee", "pickup", "delivery",
     "freight", "cargo", "truck", "trailer", "bol", "rate", "weight",
     "origin", "destination", "equipment", "mode", "ftl", "ltl",
     "dispatch", "logistics", "invoice", "payment", "surcharge",
     "pallet", "commodity", "hazmat", "liftgate", "appointment",
-    "confirmed", "coordinator", "reference", "scac", "driver",
-    "currency"
+    "confirmed", "coordinator", "reference", "scac", "driver", "currency"
 }
 
-# These words are legitimate in logistics but dangerously generic alone.
-# They need at least one unambiguous domain word OR a logistics context word nearby.
-# NOTE: "rate" is intentionally NOT here — "what is the rate?" is a valid
-# logistics-only question, and noise cases ("gold rate") are already caught by
-# NOISE_KEYWORDS (Layer A).
+# Generic words that need a logistics anchor to be accepted
+# NOTE: "rate" is intentionally excluded — "what is the rate?" is valid,
+# and "gold rate" is already caught by NOISE_KEYWORDS.
 AMBIGUOUS_KEYWORDS = {"price", "amount", "charge", "cost", "fee", "value"}
 
-# When an ambiguous word appears without an unambiguous domain word,
-# these context words confirm logistics intent (e.g. "total charge", "freight cost")
+# Confirms logistics intent when only an ambiguous word is present
 LOGISTICS_CONTEXT_WORDS = {
     "total", "freight", "base", "fuel", "accessorial", "shipment",
     "carrier", "delivery", "pickup", "shipping", "transport"
@@ -82,40 +76,43 @@ def _token_overlap(question: str, document_text: str) -> int:
     return len(_tokenize(question) & _tokenize(document_text))
 
 
+def _has_field_map_hit(question: str) -> bool:
+    """Returns True if the question directly names a known shipment field."""
+    q_lower = question.lower()
+    return any(keyword in q_lower for keyword in FIELD_MAP)
+
+
 def _is_domain_relevant(question: str) -> bool:
     """
     Three-layer guardrail — no LLM required.
 
     Layer A — Noise block:
-        Hard reject if any noise keyword is present in the raw question.
-        Catches: "gold rate", "dollar rate", "petrol price", "weather", "sensex" etc.
+        Hard reject on noise/currency keywords.
+        Catches: "gold rate", "dollar rate", "petrol price", "sensex" etc.
 
     Layer B — Ambiguity check:
-        Words like "price", "cost", "charge" are valid in logistics but also
-        universal. If they appear without an unambiguous domain word AND without
-        a logistics context word (total, freight, base...), block.
+        "price", "cost", "charge" etc. need a logistics anchor word.
+        Blocks "price of oil", "cost of living" etc.
 
     Layer C — Domain keyword required:
-        After the above, at least one logistics domain keyword must remain.
-        Blocks generic questions that somehow slipped through.
+        Question must contain at least one logistics domain keyword.
     """
     q_lower = question.lower()
     q_tokens = _tokenize(question)
     raw_words = set(re.findall(r"[a-z]+", q_lower))
 
-    # Layer A: hard noise block
+    # Layer A
     if raw_words & NOISE_KEYWORDS:
         return False
 
-    # Layer B: ambiguous words need logistics confirmation
+    # Layer B
     unambiguous_domain_hits = q_tokens & (DOMAIN_KEYWORDS - AMBIGUOUS_KEYWORDS)
     ambiguous_hits = q_tokens & AMBIGUOUS_KEYWORDS
-
     if ambiguous_hits and not unambiguous_domain_hits:
         if not (raw_words & LOGISTICS_CONTEXT_WORDS):
             return False
 
-    # Layer C: must have at least one domain keyword
+    # Layer C
     if not (q_tokens & DOMAIN_KEYWORDS):
         return False
 
@@ -123,9 +120,7 @@ def _is_domain_relevant(question: str) -> bool:
 
 
 def _parse_all_fields(text: str) -> dict:
-    """
-    Parse ALL 'Field Name: Value' pairs from document.
-    """
+    """Parse all 'Field Name: Value' pairs from document text."""
     pattern = r"^([A-Za-z][A-Za-z\s]{1,30}?)\s*[:\-]\s*(.+)$"
     fields = {}
     for line in text.splitlines():
@@ -141,7 +136,6 @@ def _parse_all_fields(text: str) -> dict:
 def _extract_value(question: str, chunk: str, all_doc_text: str = "") -> str:
     """Extract specific field value. Search chunk first, then full doc."""
     q_lower = question.lower()
-
     chunk_fields = _parse_all_fields(chunk)
     doc_fields   = _parse_all_fields(all_doc_text) if all_doc_text else {}
 
@@ -178,8 +172,12 @@ def ask_question(question: str, vectorstore, all_doc_text: str = "") -> dict:
             "guardrail": "domain_check"
         }
 
-    # Layer 2: Token overlap with document
-    if all_doc_text:
+    # Layer 2: Token overlap check
+    # SKIPPED if question directly names a known field (carrier, rate, pickup, etc.)
+    # WHY: short precise questions like "who is the carrier?" tokenize to just
+    # {'carrier'} — 1 token — which would false-block at threshold < 2.
+    # A direct FIELD_MAP hit is stronger proof of relevance than token count.
+    if all_doc_text and not _has_field_map_hit(question):
         overlap = _token_overlap(question, all_doc_text)
         if overlap < 2:
             return {
